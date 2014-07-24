@@ -102,6 +102,32 @@ func main() {
 	// Fill the base image with circles
 	// For now, use the dumbest algorithm: triangular tiling with a center in (0,0) and angle = 0
 	// See http://en.wikipedia.org/wiki/File:Triangular_tiling_circle_packing.png for the insight
+	var best []Point
+	shiftN := 4
+
+	for i := 0; i < shiftN; i++ {
+		for j := 0; j < shiftN; j++ {
+			centers := fillHex(base, float64(i)*(*toolDiameter)/2, float64(j)*(*toolDiameter)/2)
+			fmt.Printf("Found len(centers) = %d\n", len(centers))
+			if len(best) < len(centers) {
+				best = centers
+			}
+			fmt.Printf("len(best) = %d\n", len(best))
+		}
+	}
+
+	// Create debug output
+	basePxSize := *pxSize / float64(*n)
+	outImg := image.NewRGBA(base.Bounds())
+	draw.Draw(outImg, base.Bounds(), base, image.Point{0, 0}, draw.Src)
+	clr := color.RGBA{R: 255, A: 255}
+	for _, c := range best {
+		drawCircle(outImg, c.X/basePxSize, c.Y/basePxSize, (*toolDiameter)/2/basePxSize, clr)
+	}
+	mustSavePNG("out.debug.png", outImg)
+}
+
+func fillHex(base *image.Gray, ox, oy float64) []Point {
 	basePxSize := *pxSize / float64(*n)
 	width := float64(base.Bounds().Dx()) * basePxSize
 	height := float64(base.Bounds().Dy()) * basePxSize
@@ -109,28 +135,25 @@ func main() {
 	dy := (*toolDiameter) / 2
 	dx := dy * 1.73205080757 // sqrt(3)
 	var centers []Point
-	for i := 0; float64(i)*dx < width; i++ {
-		for j := 0; float64(j)*dy < height; j++ {
+	for i := 0; ; i++ {
+		cx := ox + float64(i)*dx
+		if cx >= width {
+			break
+		}
+		for j := 0; ; j++ {
+			cy := oy + float64(j)*dy
+			if cy >= height {
+				break
+			}
 			if (i+j)%2 == 1 {
 				continue
 			}
-			cx := float64(i) * dx
-			cy := float64(j) * dy
 			if checkCircle(base, basePxSize, cx, cy, (*toolDiameter)/2) {
 				centers = append(centers, Point{cx, cy})
 			}
 		}
 	}
-
-	// Create debug output
-	fmt.Printf("len(centers): %d\n", len(centers))
-	outImg := image.NewRGBA(base.Bounds())
-	draw.Draw(outImg, base.Bounds(), base, image.Point{0, 0}, draw.Src)
-	clr := color.RGBA{R: 255, A: 255}
-	for _, c := range centers {
-		drawCircle(outImg, c.X/basePxSize, c.Y/basePxSize, (*toolDiameter)/2/basePxSize, clr)
-	}
-	mustSavePNG("out.debug.png", outImg)
+	return centers
 }
 
 func mustLoadPNG(name string) image.Image {
