@@ -102,7 +102,8 @@ func main() {
 	// Fill the base image with circles
 	// For now, use the dumbest algorithm: triangular tiling with a center in (0,0) and angle = 0
 	// See http://en.wikipedia.org/wiki/File:Triangular_tiling_circle_packing.png for the insight
-	shiftN := 4
+	shiftN := 32
+	shift := (*toolDiameter) / float64(shiftN)
 
 	var res []Point
 	for curX := 0; curX < base.Bounds().Dx(); curX++ {
@@ -120,8 +121,8 @@ func main() {
 
 			for i := 0; i < shiftN; i++ {
 				for j := 0; j < shiftN; j++ {
-					try(fillTriangle(base, 1, bbox, float64(i)*(*toolDiameter)/2, float64(j)*(*toolDiameter)/2))
-					try(fillQuad(base, 1, bbox, float64(i)*(*toolDiameter)/2, float64(j)*(*toolDiameter)/2))
+					try(fillTriangle(base, 1, bbox, float64(i)*shift, float64(j)*shift))
+					try(fillQuad(base, 1, bbox, float64(i)*shift, float64(j)*shift))
 				}
 			}
 			res = append(res, best...)
@@ -149,13 +150,23 @@ func fillQuad(base *image.Gray, level byte, bbox image.Rectangle, ox, oy float64
 	var centers []Point
 	for i := 0; ; i++ {
 		cx := ox + float64(i)*dx
-		if cx < float64(bbox.Min.X)*dx || cx >= float64(bbox.Max.X)*dx || cx >= width {
+		if cx >= width {
 			break
+		}
+		if cx < float64(bbox.Min.X-1)*basePxSize || cx >= float64(bbox.Max.X+1)*basePxSize {
+			//fmt.Printf("bbox={%f,%f}-{%f,%f}, cx: %f, skip...\n",
+			//	float64(bbox.Min.X)*basePxSize, float64(bbox.Min.Y)*basePxSize, float64(bbox.Max.X)*basePxSize, float64(bbox.Max.Y)*basePxSize, cx)
+			continue
 		}
 		for j := 0; ; j++ {
 			cy := oy + float64(j)*dy
-			if cy < float64(bbox.Min.Y)*dy || cy >= float64(bbox.Max.Y)*dy || cy >= height {
+			if cy >= height {
 				break
+			}
+			if cy < float64(bbox.Min.Y-1)*basePxSize || cy >= float64(bbox.Max.Y+1)*basePxSize {
+				//fmt.Printf("bbox={%f,%f}-{%f,%f}, cy: %f, skip...\n",
+				//	float64(bbox.Min.X)*basePxSize, float64(bbox.Min.Y)*basePxSize, float64(bbox.Max.X)*basePxSize, float64(bbox.Max.Y)*basePxSize, cy)
+				continue
 			}
 			if checkCircle(base, level, basePxSize, cx, cy, (*toolDiameter)/2) {
 				centers = append(centers, Point{cx, cy})
@@ -178,10 +189,16 @@ func fillTriangle(base *image.Gray, level byte, bbox image.Rectangle, ox, oy flo
 		if cx >= width {
 			break
 		}
+		if cx < float64(bbox.Min.X-1)*basePxSize || cx >= float64(bbox.Max.X+1)*basePxSize {
+			continue
+		}
 		for j := 0; ; j++ {
 			cy := oy + float64(j)*dy
 			if cy >= height {
 				break
+			}
+			if cy < float64(bbox.Min.Y-1)*basePxSize || cy >= float64(bbox.Max.Y+1)*basePxSize {
+				continue
 			}
 			if (i+j)%2 == 1 {
 				continue
