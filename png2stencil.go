@@ -110,7 +110,7 @@ func main() {
 			if base.Pix[curY*base.Stride+curX] != 255 {
 				continue
 			}
-			floodFill(base, 1, curX, curY)
+			bbox := floodFill(base, 1, curX, curY)
 			var best []Point
 			try := func(centers []Point) {
 				if len(best) < len(centers) {
@@ -120,8 +120,8 @@ func main() {
 
 			for i := 0; i < shiftN; i++ {
 				for j := 0; j < shiftN; j++ {
-					try(fillTriangle(base, 1, float64(i)*(*toolDiameter)/2, float64(j)*(*toolDiameter)/2))
-					try(fillQuad(base, 1, float64(i)*(*toolDiameter)/2, float64(j)*(*toolDiameter)/2))
+					try(fillTriangle(base, 1, bbox, float64(i)*(*toolDiameter)/2, float64(j)*(*toolDiameter)/2))
+					try(fillQuad(base, 1, bbox, float64(i)*(*toolDiameter)/2, float64(j)*(*toolDiameter)/2))
 				}
 			}
 			res = append(res, best...)
@@ -140,7 +140,7 @@ func main() {
 	mustSavePNG("out.debug.png", outImg)
 }
 
-func fillQuad(base *image.Gray, level byte, ox, oy float64) []Point {
+func fillQuad(base *image.Gray, level byte, bbox image.Rectangle, ox, oy float64) []Point {
 	basePxSize := *pxSize / float64(*n)
 	width := float64(base.Bounds().Dx()) * basePxSize
 	height := float64(base.Bounds().Dy()) * basePxSize
@@ -149,12 +149,12 @@ func fillQuad(base *image.Gray, level byte, ox, oy float64) []Point {
 	var centers []Point
 	for i := 0; ; i++ {
 		cx := ox + float64(i)*dx
-		if cx >= width {
+		if cx < float64(bbox.Min.X)*dx || cx >= float64(bbox.Max.X)*dx || cx >= width {
 			break
 		}
 		for j := 0; ; j++ {
 			cy := oy + float64(j)*dy
-			if cy >= height {
+			if cy < float64(bbox.Min.Y)*dy || cy >= float64(bbox.Max.Y)*dy || cy >= height {
 				break
 			}
 			if checkCircle(base, level, basePxSize, cx, cy, (*toolDiameter)/2) {
@@ -165,7 +165,7 @@ func fillQuad(base *image.Gray, level byte, ox, oy float64) []Point {
 	return centers
 }
 
-func fillTriangle(base *image.Gray, level byte, ox, oy float64) []Point {
+func fillTriangle(base *image.Gray, level byte, bbox image.Rectangle, ox, oy float64) []Point {
 	basePxSize := *pxSize / float64(*n)
 	width := float64(base.Bounds().Dx()) * basePxSize
 	height := float64(base.Bounds().Dy()) * basePxSize
@@ -267,7 +267,8 @@ func inside(cx, cy, r, x, y float64) bool {
 }
 
 // floodFill fills 4-connected non-background pixels starting from (x,y) with level.
-func floodFill(base *image.Gray, level byte, x, y int) {
+func floodFill(base *image.Gray, level byte, x, y int) image.Rectangle {
+	bbox := image.Rect(x, y, x, y)
 	cur := []int{y*base.Stride + x}
 	for len(cur) > 0 {
 		var pix []int
@@ -275,6 +276,20 @@ func floodFill(base *image.Gray, level byte, x, y int) {
 			if base.Pix[j] != 0 && base.Pix[j] != 254 && base.Pix[j] != level {
 				base.Pix[j] = level
 				pix = append(pix, j)
+				x := j % base.Stride
+				y := j / base.Stride
+				if x < bbox.Min.X {
+					bbox.Min.X = x
+				}
+				if x > bbox.Max.X {
+					bbox.Max.X = x
+				}
+				if y < bbox.Min.Y {
+					bbox.Min.Y = y
+				}
+				if y > bbox.Max.Y {
+					bbox.Max.Y = y
+				}
 			}
 		}
 		for _, i := range cur {
@@ -294,4 +309,5 @@ func floodFill(base *image.Gray, level byte, x, y int) {
 		}
 		cur = pix
 	}
+	return bbox
 }
