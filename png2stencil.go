@@ -102,21 +102,30 @@ func main() {
 	// Fill the base image with circles
 	// For now, use the dumbest algorithm: triangular tiling with a center in (0,0) and angle = 0
 	// See http://en.wikipedia.org/wiki/File:Triangular_tiling_circle_packing.png for the insight
-	var best []Point
 	shiftN := 4
 
-	try := func(centers []Point) {
-		fmt.Printf("Found len(centers) = %d\n", len(centers))
-		if len(best) < len(centers) {
-			best = centers
-		}
-		fmt.Printf("len(best) = %d\n", len(best))
-	}
+	var res []Point
+	for curX := 0; curX < base.Bounds().Dx(); curX++ {
+		for curY := 0; curY < base.Bounds().Dy(); curY++ {
+			if base.Pix[curY*base.Stride+curX] != 255 {
+				continue
+			}
+			floodFill(base, 1, curX, curY)
+			var best []Point
+			try := func(centers []Point) {
+				if len(best) < len(centers) {
+					best = centers
+				}
+			}
 
-	for i := 0; i < shiftN; i++ {
-		for j := 0; j < shiftN; j++ {
-			try(fillTriangle(base, float64(i)*(*toolDiameter)/2, float64(j)*(*toolDiameter)/2))
-			try(fillQuad(base, float64(i)*(*toolDiameter)/2, float64(j)*(*toolDiameter)/2))
+			for i := 0; i < shiftN; i++ {
+				for j := 0; j < shiftN; j++ {
+					try(fillTriangle(base, 1, float64(i)*(*toolDiameter)/2, float64(j)*(*toolDiameter)/2))
+					try(fillQuad(base, 1, float64(i)*(*toolDiameter)/2, float64(j)*(*toolDiameter)/2))
+				}
+			}
+			res = append(res, best...)
+			floodFill(base, 254, curX, curY)
 		}
 	}
 
@@ -125,13 +134,13 @@ func main() {
 	outImg := image.NewRGBA(base.Bounds())
 	draw.Draw(outImg, base.Bounds(), base, image.Point{0, 0}, draw.Src)
 	clr := color.RGBA{R: 255, A: 255}
-	for _, c := range best {
+	for _, c := range res {
 		drawCircle(outImg, c.X/basePxSize, c.Y/basePxSize, (*toolDiameter)/2/basePxSize, clr)
 	}
 	mustSavePNG("out.debug.png", outImg)
 }
 
-func fillQuad(base *image.Gray, ox, oy float64) []Point {
+func fillQuad(base *image.Gray, level byte, ox, oy float64) []Point {
 	basePxSize := *pxSize / float64(*n)
 	width := float64(base.Bounds().Dx()) * basePxSize
 	height := float64(base.Bounds().Dy()) * basePxSize
@@ -148,7 +157,7 @@ func fillQuad(base *image.Gray, ox, oy float64) []Point {
 			if cy >= height {
 				break
 			}
-			if checkCircle(base, basePxSize, cx, cy, (*toolDiameter)/2) {
+			if checkCircle(base, level, basePxSize, cx, cy, (*toolDiameter)/2) {
 				centers = append(centers, Point{cx, cy})
 			}
 		}
@@ -156,7 +165,7 @@ func fillQuad(base *image.Gray, ox, oy float64) []Point {
 	return centers
 }
 
-func fillTriangle(base *image.Gray, ox, oy float64) []Point {
+func fillTriangle(base *image.Gray, level byte, ox, oy float64) []Point {
 	basePxSize := *pxSize / float64(*n)
 	width := float64(base.Bounds().Dx()) * basePxSize
 	height := float64(base.Bounds().Dy()) * basePxSize
@@ -177,7 +186,7 @@ func fillTriangle(base *image.Gray, ox, oy float64) []Point {
 			if (i+j)%2 == 1 {
 				continue
 			}
-			if checkCircle(base, basePxSize, cx, cy, (*toolDiameter)/2) {
+			if checkCircle(base, level, basePxSize, cx, cy, (*toolDiameter)/2) {
 				centers = append(centers, Point{cx, cy})
 			}
 		}
@@ -226,7 +235,7 @@ func drawCircle(img *image.RGBA, x, y, r float64, c color.Color) {
 }
 
 // checkCircle checks that a circle with a center in (x, y) and a radius r fits to the base image and all pixels are high.
-func checkCircle(base *image.Gray, pxSize, x, y, r float64) bool {
+func checkCircle(base *image.Gray, level byte, pxSize, x, y, r float64) bool {
 	width := float64(base.Bounds().Dx()) * pxSize
 	height := float64(base.Bounds().Dy()) * pxSize
 	if x < r || x > width-r || y < r || y > height-r {
@@ -242,7 +251,7 @@ func checkCircle(base *image.Gray, pxSize, x, y, r float64) bool {
 			if !inside(x, y, r, (x-r)+float64(cx-x0)*pxSize, (y-r)+float64(cy-y0)*pxSize) {
 				continue
 			}
-			if base.Pix[i0+cx] == 0 {
+			if base.Pix[i0+cx] != level {
 				// circle hits background
 				//fmt.Printf("checkCircle(pxSize=%f, x=%f, y=%f, r=%f, i0=%d, cx=%d, base.Pix[i0+cx]=%d\n",
 				//	pxSize, x, y, r, i0, cx, base.Pix[i0+cx])
@@ -255,4 +264,34 @@ func checkCircle(base *image.Gray, pxSize, x, y, r float64) bool {
 
 func inside(cx, cy, r, x, y float64) bool {
 	return (x-cx)*(x-cx)+(y-cy)*(y-cy) <= r*r
+}
+
+// floodFill fills 4-connected non-background pixels starting from (x,y) with level.
+func floodFill(base *image.Gray, level byte, x, y int) {
+	cur := []int{y*base.Stride + x}
+	for len(cur) > 0 {
+		var pix []int
+		try := func(j int) {
+			if base.Pix[j] != 0 && base.Pix[j] != 254 && base.Pix[j] != level {
+				base.Pix[j] = level
+				pix = append(pix, j)
+			}
+		}
+		for _, i := range cur {
+			if i%base.Stride != 0 {
+				try(i - 1)
+			}
+
+			if i%base.Stride != base.Stride-1 {
+				try(i + 1)
+			}
+			if i/base.Stride > 0 {
+				try(i - base.Stride)
+			}
+			if i/base.Stride < base.Bounds().Dy()-1 {
+				try(i + base.Stride)
+			}
+		}
+		cur = pix
+	}
 }
