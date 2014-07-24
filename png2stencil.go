@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/draw"
 	"image/png"
 	"os"
 	"strings"
@@ -24,6 +25,10 @@ var (
 
 	flagsNotSet []string
 )
+
+type Point struct {
+	X, Y float64
+}
 
 func checkFloat64(name string, val float64) {
 	if val == 0 {
@@ -93,6 +98,39 @@ func main() {
 
 	// Save base image for debug purposes
 	mustSavePNG("base.debug.png", base)
+
+	// Fill the base image with circles
+	// For now, use the dumbest algorithm: triangular tiling with a center in (0,0) and angle = 0
+	// See http://en.wikipedia.org/wiki/File:Triangular_tiling_circle_packing.png for the insight
+	basePxSize := *pxSize / float64(*n)
+	width := float64(base.Bounds().Dx()) * basePxSize
+	height := float64(base.Bounds().Dy()) * basePxSize
+
+	dy := (*toolDiameter) / 2
+	dx := dy * 1.73205080757 // sqrt(3)
+	var centers []Point
+	for i := 0; float64(i)*dx < width; i++ {
+		for j := 0; float64(j)*dy < height; j++ {
+			if (i+j)%2 == 1 {
+				continue
+			}
+			cx := float64(i) * dx
+			cy := float64(j) * dy
+			if checkCircle(base, basePxSize, cx, cy, (*toolDiameter)/2) {
+				centers = append(centers, Point{cx, cy})
+			}
+		}
+	}
+
+	// Create debug output
+	fmt.Printf("len(centers): %d\n", len(centers))
+	outImg := image.NewRGBA(base.Bounds())
+	draw.Draw(outImg, base.Bounds(), base, image.Point{0, 0}, draw.Src)
+	clr := color.RGBA{R: 255, A: 255}
+	for _, c := range centers {
+		drawCircle(outImg, c.X/basePxSize, c.Y/basePxSize, (*toolDiameter)/2/basePxSize, clr)
+	}
+	mustSavePNG("out.debug.png", outImg)
 }
 
 func mustLoadPNG(name string) image.Image {
@@ -118,4 +156,51 @@ func mustSavePNG(name string, img image.Image) {
 	if err := png.Encode(f, img); err != nil {
 		failf("Failed to save PNG image to %q: %v", name, err)
 	}
+}
+
+func drawCircle(img *image.RGBA, x, y, r float64, c color.Color) {
+	fmt.Printf("drawCircle(x=%f, y=%f, r=%f, c=%v)\n", x, y, r, c)
+	x0 := int(x - r)
+	y0 := int(y - r)
+	x1 := int(x + r)
+	y1 := int(y + r)
+	for cy := y0; cy <= y1; cy++ {
+		for cx := x0; cx <= x1; cx++ {
+			if inside(x, y, r, float64(cx), float64(cy)) {
+				img.Set(cx, cy, c)
+			}
+		}
+	}
+}
+
+// checkCircle checks that a circle with a center in (x, y) and a radius r fits to the base image and all pixels are high.
+func checkCircle(base *image.Gray, pxSize, x, y, r float64) bool {
+	width := float64(base.Bounds().Dx()) * pxSize
+	height := float64(base.Bounds().Dy()) * pxSize
+	if x < r || x > width-r || y < r || y > height-r {
+		return false
+	}
+	x0 := int((x - r) / pxSize)
+	y0 := int((y - r) / pxSize)
+	x1 := int((x + r) / pxSize)
+	y1 := int((y + r) / pxSize)
+	for cy := y0; cy <= y1; cy++ {
+		i0 := cy * base.Stride
+		for cx := x0; cx <= x1; cx++ {
+			if !inside(x, y, r, (x-r)+float64(cx-x0)*pxSize, (y-r)+float64(cy-y0)*pxSize) {
+				continue
+			}
+			if base.Pix[i0+cx] == 0 {
+				// circle hits background
+				//fmt.Printf("checkCircle(pxSize=%f, x=%f, y=%f, r=%f, i0=%d, cx=%d, base.Pix[i0+cx]=%d\n",
+				//	pxSize, x, y, r, i0, cx, base.Pix[i0+cx])
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func inside(cx, cy, r, x, y float64) bool {
+	return (x-cx)*(x-cx)+(y-cy)*(y-cy) <= r*r
 }
