@@ -105,14 +105,18 @@ func main() {
 	var best []Point
 	shiftN := 4
 
+	try := func(centers []Point) {
+		fmt.Printf("Found len(centers) = %d\n", len(centers))
+		if len(best) < len(centers) {
+			best = centers
+		}
+		fmt.Printf("len(best) = %d\n", len(best))
+	}
+
 	for i := 0; i < shiftN; i++ {
 		for j := 0; j < shiftN; j++ {
-			centers := fillHex(base, float64(i)*(*toolDiameter)/2, float64(j)*(*toolDiameter)/2)
-			fmt.Printf("Found len(centers) = %d\n", len(centers))
-			if len(best) < len(centers) {
-				best = centers
-			}
-			fmt.Printf("len(best) = %d\n", len(best))
+			try(fillTriangle(base, float64(i)*(*toolDiameter)/2, float64(j)*(*toolDiameter)/2))
+			try(fillQuad(base, float64(i)*(*toolDiameter)/2, float64(j)*(*toolDiameter)/2))
 		}
 	}
 
@@ -127,7 +131,32 @@ func main() {
 	mustSavePNG("out.debug.png", outImg)
 }
 
-func fillHex(base *image.Gray, ox, oy float64) []Point {
+func fillQuad(base *image.Gray, ox, oy float64) []Point {
+	basePxSize := *pxSize / float64(*n)
+	width := float64(base.Bounds().Dx()) * basePxSize
+	height := float64(base.Bounds().Dy()) * basePxSize
+	dx := *toolDiameter
+	dy := *toolDiameter
+	var centers []Point
+	for i := 0; ; i++ {
+		cx := ox + float64(i)*dx
+		if cx >= width {
+			break
+		}
+		for j := 0; ; j++ {
+			cy := oy + float64(j)*dy
+			if cy >= height {
+				break
+			}
+			if checkCircle(base, basePxSize, cx, cy, (*toolDiameter)/2) {
+				centers = append(centers, Point{cx, cy})
+			}
+		}
+	}
+	return centers
+}
+
+func fillTriangle(base *image.Gray, ox, oy float64) []Point {
 	basePxSize := *pxSize / float64(*n)
 	width := float64(base.Bounds().Dx()) * basePxSize
 	height := float64(base.Bounds().Dy()) * basePxSize
