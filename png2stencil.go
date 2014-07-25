@@ -7,6 +7,8 @@ import (
 	"image/color"
 	"image/draw"
 	"image/png"
+	"io/ioutil"
+	"math"
 	"os"
 	"strings"
 )
@@ -14,12 +16,12 @@ import (
 var (
 	input        = flag.String("input", "", "Input PNG file with a solder paste map")
 	output       = flag.String("output", "", "Output G-code file")
-	pxSize       = flag.Float64("px_size", 0, "Size of a pixel side (in mm)")
-	toolDiameter = flag.Float64("tool_diameter", 0, "Tool diameter (in mm)")
-	millDepth    = flag.Float64("mill_depth", 0, "Mill depth (in mm)")
-	safeHeight   = flag.Float64("safe_height", 0, "Safe height to move between mill points (in mm)")
-	millRate     = flag.Float64("mill_rate", 0, "Mill rate (mm/min)")
-	travelRate   = flag.Float64("travel_rate", 0, "Travel rate (mm/min)")
+	pxSize       = flag.Float64("px_size", math.NaN(), "Size of a pixel side (in mm)")
+	toolDiameter = flag.Float64("tool_diameter", math.NaN(), "Tool diameter (in mm)")
+	millHeight   = flag.Float64("mill_height", math.NaN(), "Mill height (in mm)")
+	safeHeight   = flag.Float64("safe_height", math.NaN(), "Safe height to move between mill points (in mm)")
+	millRate     = flag.Float64("mill_rate", math.NaN(), "Mill rate (mm/min)")
+	travelRate   = flag.Float64("travel_rate", math.NaN(), "Travel rate (mm/min)")
 	n            = flag.Int("n", 1, "Number of linear subpixels for each pixel, when searching for an optimal milling positions")
 	background   = flag.String("background", "", "Background color: black or white")
 
@@ -31,7 +33,7 @@ type Point struct {
 }
 
 func checkFloat64(name string, val float64) {
-	if val == 0 {
+	if math.IsNaN(val) {
 		flagsNotSet = append(flagsNotSet, name)
 	}
 }
@@ -55,7 +57,7 @@ func main() {
 	checkString("--background", *background)
 	checkFloat64("--px_size", *pxSize)
 	checkFloat64("--tool_diameter", *toolDiameter)
-	checkFloat64("--mill_depth", *millDepth)
+	checkFloat64("--mill_height", *millHeight)
 	checkFloat64("--safe_height", *safeHeight)
 	checkFloat64("--mill_rate", *millRate)
 	checkFloat64("--travel_rate", *travelRate)
@@ -139,6 +141,24 @@ func main() {
 		drawCircle(outImg, c.X/basePxSize, c.Y/basePxSize, (*toolDiameter)/2/basePxSize, clr)
 	}
 	mustSavePNG("out.debug.png", outImg)
+
+	// Now, generate drill G-code
+	var gcode []string
+	add := func(code string) { gcode = append(gcode, code) }
+	add("G21; Set units to millimeters")
+	add("G0 Z10")
+	add("G0 X0 Y0")
+	add("M3; Turn on spindle")
+	for _, c := range res {
+		add(fmt.Sprintf("G1 X%f Y%f F%f", c.X, c.Y, *travelRate))
+		add(fmt.Sprintf("G1 Z%f F%f", *millHeight, *millRate))
+		add(fmt.Sprintf("G1 Z%f F%f", *safeHeight, *travelRate))
+	}
+	add("M5; Turn off spindle")
+
+	if err := ioutil.WriteFile(*output, []byte(strings.Join(gcode, "\n")), 0644); err != nil {
+		failf("Failed to write result g-code file %q: %v", *output, err)
+	}
 }
 
 func fillQuad(base *image.Gray, level byte, bbox image.Rectangle, ox, oy float64) []Point {
