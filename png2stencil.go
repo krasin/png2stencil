@@ -147,14 +147,17 @@ func main() {
 	add := func(code string) { gcode = append(gcode, code) }
 	add("G21; Set units to millimeters")
 	add("G0 Z10")
-	add("G0 X0 Y0")
-	add("M3; Turn on spindle")
+	//add("G0 X0 Y0")
+	//add("M3; Turn on spindle")
 	for _, c := range res {
 		add(fmt.Sprintf("G1 X%f Y%f F%f", c.X, c.Y, *travelRate))
 		add(fmt.Sprintf("G1 Z%f F%f", *millHeight, *millRate))
+		add("M106 S255")
+		add("G4 P100")
+		add("M107")
 		add(fmt.Sprintf("G1 Z%f F%f", *safeHeight, *travelRate))
 	}
-	add("M5; Turn off spindle")
+	//add("M5; Turn off spindle")
 
 	if err := ioutil.WriteFile(*output, []byte(strings.Join(gcode, "\n")), 0644); err != nil {
 		failf("Failed to write result g-code file %q: %v", *output, err)
