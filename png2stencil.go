@@ -11,6 +11,7 @@ import (
 	"math"
 	"os"
 	"strings"
+	"time"
 )
 
 var (
@@ -24,6 +25,7 @@ var (
 	travelRate   = flag.Float64("travel_rate", math.NaN(), "Travel rate (mm/min)")
 	n            = flag.Int("n", 1, "Number of linear subpixels for each pixel, when searching for an optimal milling positions")
 	background   = flag.String("background", "", "Background color: black or white")
+	dispenseTime = flag.Duration("dispense_time", 50*time.Millisecond, "Time to keep the dispenser valve opened for each shot")
 
 	flagsNotSet []string
 )
@@ -40,6 +42,12 @@ func checkFloat64(name string, val float64) {
 
 func checkString(name string, val string) {
 	if val == "" {
+		flagsNotSet = append(flagsNotSet, name)
+	}
+}
+
+func checkDuration(name string, val time.Duration) {
+	if val == 0 {
 		flagsNotSet = append(flagsNotSet, name)
 	}
 }
@@ -61,6 +69,7 @@ func main() {
 	checkFloat64("--safe_height", *safeHeight)
 	checkFloat64("--mill_rate", *millRate)
 	checkFloat64("--travel_rate", *travelRate)
+	checkDuration("--dispense_time", *dispenseTime)
 
 	if len(flagsNotSet) > 0 {
 		failf("Some mandatory flags not set: %s.\n", strings.Join(flagsNotSet, ", "))
@@ -153,7 +162,7 @@ func main() {
 		add(fmt.Sprintf("G1 X%f Y%f F%f", c.X, c.Y, *travelRate))
 		add(fmt.Sprintf("G1 Z%f F%f", *millHeight, *millRate))
 		add("M106 S255")
-		add("G4 P100")
+		add(fmt.Sprintf("G4 P%d", int64(*dispenseTime/time.Millisecond)))
 		add("M107")
 		add(fmt.Sprintf("G1 Z%f F%f", *safeHeight, *travelRate))
 	}
