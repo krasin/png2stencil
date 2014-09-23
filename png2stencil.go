@@ -94,6 +94,7 @@ func main() {
 
 	x0 := in.Bounds().Min.X
 	y0 := in.Bounds().Min.Y
+	y1 := in.Bounds().Max.Y
 
 	base := image.NewGray(image.Rect(0, 0, in.Bounds().Dx()*(*n), in.Bounds().Dy()*(*n)))
 	for i := range base.Pix {
@@ -159,7 +160,7 @@ func main() {
 	//add("G0 X0 Y0")
 	//add("M3; Turn on spindle")
 	for _, c := range res {
-		add(fmt.Sprintf("G1 X%f Y%f F%f", c.X, c.Y, *travelRate))
+		add(fmt.Sprintf("G1 X%f Y%f F%f", c.X, float64(y1)*basePxSize-c.Y, *travelRate))
 		add(fmt.Sprintf("G1 Z%f F%f", *millHeight, *millRate))
 		add("M106 S255")
 		add(fmt.Sprintf("G4 P%d", int64(*dispenseTime/time.Millisecond)))
